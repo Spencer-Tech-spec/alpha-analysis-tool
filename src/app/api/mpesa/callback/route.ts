@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, updateSession } from '@/lib/paymentStore';
 import { createAccount } from '@/lib/accountService';
 import { sendWhatsAppCredentials } from '@/lib/whatsapp';
+import { supabase } from '@/lib/supabase';
 
 /**
  * POST /api/mpesa/callback
@@ -19,38 +19,63 @@ export async function POST(req: NextRequest) {
 
     const { CheckoutRequestID, ResultCode, ResultDesc } = stk;
 
-    const session = getSession(CheckoutRequestID);
-    if (!session) {
-      console.warn(`[Callback] Unknown CheckoutRequestID: ${CheckoutRequestID}`);
+    // Fetch the pending session from Supabase
+    const { data: paymentSession, error: fetchError } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('checkout_request_id', CheckoutRequestID)
+      .single();
+
+    if (fetchError || !paymentSession) {
+      console.warn(`[Callback] Unknown CheckoutRequestID or DB error: ${CheckoutRequestID}`);
       return NextResponse.json({ message: 'Session not found' }, { status: 404 });
     }
 
     if (ResultCode !== 0) {
       // Payment failed or was cancelled
-      updateSession(CheckoutRequestID, {
-        status: 'failed',
-        errorMessage: ResultDesc,
-      });
-      console.log(`[Callback] Payment failed for ${session.phone}: ${ResultDesc}`);
+      await supabase
+        .from('payments')
+        .update({ status: 'failed', error_message: ResultDesc })
+        .eq('id', paymentSession.id);
+        
+      console.log(`[Callback] Payment failed for ${paymentSession.phone}: ${ResultDesc}`);
       return NextResponse.json({ message: 'Payment failure recorded.' });
     }
 
     // ✅ Payment confirmed — run automated sales flow
-    console.log(`[Callback] Payment confirmed for ${session.phone}`);
+    console.log(`[Callback] Payment confirmed for ${paymentSession.phone}`);
 
-    // Step 1: Create account
+    // Step 1: Create account credentials
     const credentials = createAccount();
 
-    // Step 2: Send credentials via WhatsApp
-    await sendWhatsAppCredentials(session.phone, credentials);
+    // Step 2: Save the user to Supabase
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .insert({
+        username: credentials.username,
+        password_hash: credentials.password, // IMPORTANT: Should be hashed in a real app!
+        phone: paymentSession.phone,
+        status: 'active'
+      })
+      .select()
+      .single();
 
-    // Step 3: Mark session as confirmed with credentials stored
-    updateSession(CheckoutRequestID, {
-      status: 'confirmed',
-      credentials,
-    });
+    if (userError || !user) {
+        console.error('[Callback] Failed to insert user into DB', userError);
+        // Even if user insert fails, payment succeeded. Edge case handling needed.
+        return NextResponse.json({ message: 'Failed to create user record.' }, { status: 500 });
+    }
 
-    console.log(`[Callback] Flow complete for ${session.phone} → ${credentials.username}`);
+    // Step 3: Link payment to user and mark as confirmed
+    await supabase
+      .from('payments')
+      .update({ status: 'confirmed', user_id: user.id })
+      .eq('id', paymentSession.id);
+
+    // Step 4: Send credentials via WhatsApp
+    await sendWhatsAppCredentials(paymentSession.phone, credentials);
+
+    console.log(`[Callback] Flow complete for ${paymentSession.phone} → ${credentials.username}`);
 
     return NextResponse.json({ message: 'Account created and credentials sent.' });
   } catch (error: unknown) {

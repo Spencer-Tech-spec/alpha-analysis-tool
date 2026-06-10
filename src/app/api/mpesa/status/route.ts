@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/paymentStore';
+import { supabase } from '@/lib/supabase';
 
 /**
  * GET /api/mpesa/status?checkoutRequestId=XXX
@@ -12,15 +12,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'checkoutRequestId is required' }, { status: 400 });
   }
 
-  const session = getSession(checkoutRequestId);
+  // Fetch the payment status from Supabase
+  const { data: session, error } = await supabase
+    .from('payments')
+    .select('status, error_message')
+    .eq('checkout_request_id', checkoutRequestId)
+    .single();
 
-  if (!session) {
+  if (error || !session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   }
 
   return NextResponse.json({
     status: session.status,
-    errorMessage: session.errorMessage,
+    errorMessage: session.error_message,
     // Don't expose credentials here — they were sent via WhatsApp
   });
 }

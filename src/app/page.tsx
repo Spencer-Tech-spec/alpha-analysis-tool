@@ -28,6 +28,7 @@ export default function Home() {
         onClose={() => setSidebarOpen(false)}
         onNavigate={setCurrentView}
         activeView={currentView}
+        onLogout={() => setIsLoggedIn(false)}
       />
 
       <main className="main-content">

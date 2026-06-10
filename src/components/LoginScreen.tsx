@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { TrendingUp, User, Lock, Eye, EyeOff, ShieldCheck, MessageSquare, Zap } from 'lucide-react';
+import { TrendingUp, User, Lock, Eye, EyeOff, ShieldCheck, MessageSquare, Zap, Mail, Phone } from 'lucide-react';
 import PaymentModal from './PaymentModal';
 
 interface LoginScreenProps {
@@ -9,8 +9,69 @@ interface LoginScreenProps {
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
+  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  const handleLogin = async () => {
+    setLoginError('');
+    setIsLoading(true);
+    
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        setLoginError(data.error || 'Login failed');
+      } else {
+        onLogin(); // Proceed to app
+      }
+    } catch (e) {
+      setLoginError('Network error. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    setLoginError('');
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone, email, password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setLoginError(data.error || 'Registration failed');
+      } else {
+        // Automatically switch to login with the generated username
+        setUsername(data.user.username);
+        setIsLoginMode(true);
+        setLoginError('Account created successfully! You can now sign in.');
+      }
+    } catch (e) {
+      setLoginError('Network error. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="login-page">
@@ -29,13 +90,84 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       </div>
 
       <div className="login-form">
-        <div className="input-group">
-          <label>Username</label>
-          <div className="input-wrapper">
-            <User size={18} className="input-icon" />
-            <input type="text" placeholder="Enter your username" />
-          </div>
+        <div className="mode-toggle">
+          <button 
+            className={`toggle-btn ${isLoginMode ? 'active' : ''}`}
+            onClick={() => { setIsLoginMode(true); setLoginError(''); }}
+          >
+            Sign In
+          </button>
+          <button 
+            className={`toggle-btn ${!isLoginMode ? 'active' : ''}`}
+            onClick={() => { setIsLoginMode(false); setLoginError(''); }}
+          >
+            Sign Up
+          </button>
         </div>
+
+        {loginError && (
+          <div className={`message-banner ${loginError.includes('success') ? 'success' : 'error'}`}>
+            {loginError}
+          </div>
+        )}
+
+        {!isLoginMode && (
+          <>
+            <div className="input-group">
+              <label>Full Name</label>
+              <div className="input-wrapper">
+                <User size={18} className="input-icon" />
+                <input 
+                  type="text" 
+                  placeholder="Enter your full name" 
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label>Phone Number</label>
+              <div className="input-wrapper">
+                <Phone size={18} className="input-icon" />
+                <input 
+                  type="tel" 
+                  placeholder="e.g. 0712345678" 
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label>Email Address</label>
+              <div className="input-wrapper">
+                <Mail size={18} className="input-icon" />
+                <input 
+                  type="email" 
+                  placeholder="Enter your email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {isLoginMode && (
+          <div className="input-group">
+            <label>Username</label>
+            <div className="input-wrapper">
+              <User size={18} className="input-icon" />
+              <input 
+                type="text" 
+                placeholder="Enter your username" 
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="input-group">
           <label>Password</label>
@@ -43,7 +175,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <Lock size={18} className="input-icon" />
             <input
               type={showPassword ? "text" : "password"}
-              placeholder="Enter your password"
+              placeholder={isLoginMode ? "Enter your password" : "Create a password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (isLoginMode ? handleLogin() : handleRegister())}
             />
             <button
               className="toggle-pw"
@@ -59,8 +194,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           <label htmlFor="agree">I agree to Terms & Conditions</label>
         </div>
 
-        <button className="btn-signin" onClick={onLogin}>
-          Sign In
+        <button 
+          className="btn-signin" 
+          onClick={isLoginMode ? handleLogin : handleRegister} 
+          disabled={isLoading}
+        >
+          {isLoading ? (isLoginMode ? 'Verifying...' : 'Creating Account...') : (isLoginMode ? 'Sign In' : 'Sign Up')}
         </button>
       </div>
 
@@ -201,6 +340,54 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           display: flex;
           flex-direction: column;
           gap: 8px;
+        }
+
+        .mode-toggle {
+          display: flex;
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 8px;
+          padding: 4px;
+          margin-bottom: 16px;
+        }
+
+        .toggle-btn {
+          flex: 1;
+          padding: 8px 0;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #94a3b8;
+          border-radius: 6px;
+          transition: all 0.2s;
+        }
+
+        .toggle-btn.active {
+          background: rgba(59, 130, 246, 0.15);
+          color: #60a5fa;
+        }
+
+        .toggle-btn:hover:not(.active) {
+          color: #e2e8f0;
+        }
+
+        .message-banner {
+          padding: 10px 12px;
+          border-radius: 8px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          text-align: center;
+          margin-bottom: 16px;
+        }
+
+        .message-banner.error {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #ef4444;
+        }
+
+        .message-banner.success {
+          background: rgba(16, 185, 129, 0.1);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          color: #10b981;
         }
 
         .input-group label {

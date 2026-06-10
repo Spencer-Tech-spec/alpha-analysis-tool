@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initiateStkPush } from '@/lib/mpesa';
-import { createSession } from '@/lib/paymentStore';
+import { supabase } from '@/lib/supabase';
 
 /**
  * POST /api/mpesa/stk-push
@@ -24,8 +24,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Store a pending session keyed by CheckoutRequestID
-    createSession(result.CheckoutRequestID, phone);
+    const amountStr = process.env.MPESA_AMOUNT || '3000';
+    const amount = parseFloat(amountStr);
+
+    // Store a pending session in Supabase keyed by CheckoutRequestID
+    const { error: dbError } = await supabase.from('payments').insert({
+      checkout_request_id: result.CheckoutRequestID,
+      phone: phone,
+      amount: amount,
+      status: 'pending'
+    });
+
+    if (dbError) {
+      console.error('[Supabase Insert Error]', dbError);
+      // We still return success to the user so they can pay, but the callback might fail
+      // if it can't find the record. Better practice: abort if DB fails.
+      return NextResponse.json({ error: 'Database error storing payment.' }, { status: 500 });
+    }
 
     return NextResponse.json({
       checkoutRequestId: result.CheckoutRequestID,

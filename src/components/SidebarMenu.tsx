@@ -10,7 +10,8 @@ import {
   Bot, 
   Bell, 
   Copy, 
-  X 
+  X,
+  LogOut
 } from 'lucide-react';
 
 interface SidebarMenuProps {
@@ -18,9 +19,10 @@ interface SidebarMenuProps {
   onClose: () => void;
   onNavigate: (view: string) => void;
   activeView: string;
+  onLogout: () => void;
 }
 
-const SidebarMenu: React.FC<SidebarMenuProps> = ({ isOpen, onClose, onNavigate, activeView }) => {
+const SidebarMenu: React.FC<SidebarMenuProps> = ({ isOpen, onClose, onNavigate, activeView, onLogout }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Layout },
     { id: 'rise-fall', label: 'Rise/Fall', icon: TrendingUp },
@@ -67,6 +69,13 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ isOpen, onClose, onNavigate, 
           })}
         </div>
 
+        <div className="sidebar-footer">
+          <button className="menu-item logout-btn" onClick={onLogout}>
+            <LogOut size={18} className="item-icon" />
+            <span className="item-label">Sign Out</span>
+          </button>
+        </div>
+
         <style jsx>{`
           .sidebar-menu {
             position: fixed;
@@ -80,6 +89,8 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ isOpen, onClose, onNavigate, 
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border-right: 1px solid var(--border-color);
             padding-top: 20px;
+            display: flex;
+            flex-direction: column;
           }
 
           .sidebar-menu.open {
@@ -121,6 +132,14 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ isOpen, onClose, onNavigate, 
             flex-direction: column;
             gap: 4px;
             padding: 0 12px;
+            flex: 1;
+            overflow-y: auto;
+          }
+
+          .sidebar-footer {
+            padding: 16px 12px;
+            border-top: 1px solid var(--border-color);
+            margin-top: auto;
           }
 
           .menu-item {
@@ -140,6 +159,15 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ isOpen, onClose, onNavigate, 
           .menu-item:hover {
             background: rgba(255, 255, 255, 0.05);
             color: var(--text-primary);
+          }
+
+          .logout-btn {
+            color: var(--accent-red);
+          }
+
+          .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
           }
 
           .menu-item.active {
