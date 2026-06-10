@@ -64,10 +64,45 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const isTrackingRef = useRef(isTracking);
   const targetDigitRef = useRef(targetDigit);
 
-  const overSum = frequencies.reduce((acc, val, idx) => idx > targetDigit ? acc + val : acc, 0);
-  const underSum = frequencies.reduce((acc, val, idx) => idx < targetDigit ? acc + val : acc, 0);
-  const overPct = totalTicks > 0 ? (overSum / totalTicks) * 100 : 0;
-  const underPct = totalTicks > 0 ? (underSum / totalTicks) * 100 : 0;
+  let card1Label = '';
+  let card2Label = '';
+  let card1Pct = 0;
+  let card2Pct = 0;
+  let showTargetDigitSelector = false;
+
+  if (activeView === 'over-under') {
+    const overSum = frequencies.reduce((acc, val, idx) => idx > targetDigit ? acc + val : acc, 0);
+    const underSum = frequencies.reduce((acc, val, idx) => idx < targetDigit ? acc + val : acc, 0);
+    card1Label = `OVER ${targetDigit}`;
+    card2Label = `UNDER ${targetDigit}`;
+    card1Pct = totalTicks > 0 ? (overSum / totalTicks) * 100 : 0;
+    card2Pct = totalTicks > 0 ? (underSum / totalTicks) * 100 : 0;
+    showTargetDigitSelector = true;
+  } else if (activeView === 'even-odd') {
+    const evenSum = frequencies.reduce((acc, val, idx) => idx % 2 === 0 ? acc + val : acc, 0);
+    const oddSum = frequencies.reduce((acc, val, idx) => idx % 2 !== 0 ? acc + val : acc, 0);
+    card1Label = 'EVEN';
+    card2Label = 'ODD';
+    card1Pct = totalTicks > 0 ? (evenSum / totalTicks) * 100 : 0;
+    card2Pct = totalTicks > 0 ? (oddSum / totalTicks) * 100 : 0;
+    showTargetDigitSelector = false;
+  } else if (activeView === 'matches-differs') {
+    const matchSum = frequencies[targetDigit] || 0;
+    const diffSum = totalTicks - matchSum;
+    card1Label = `MATCHES ${targetDigit}`;
+    card2Label = `DIFFERS ${targetDigit}`;
+    card1Pct = totalTicks > 0 ? (matchSum / totalTicks) * 100 : 0;
+    card2Pct = totalTicks > 0 ? (diffSum / totalTicks) * 100 : 0;
+    showTargetDigitSelector = true;
+  } else if (activeView === 'rise-fall') {
+    const riseSum = frequencies.reduce((acc, val, idx) => idx <= 4 ? acc + val : acc, 0);
+    const fallSum = frequencies.reduce((acc, val, idx) => idx > 4 ? acc + val : acc, 0);
+    card1Label = 'RISE';
+    card2Label = 'FALL';
+    card1Pct = totalTicks > 0 ? (riseSum / totalTicks) * 100 : 0;
+    card2Pct = totalTicks > 0 ? (fallSum / totalTicks) * 100 : 0;
+    showTargetDigitSelector = false;
+  }
 
   const controlLabels = useMemo(() => {
     switch (activeView) {
@@ -268,21 +303,21 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
       </div>
 
       <div className="trading-controls">
-        {activeView === 'over-under' && (
-          <div className="ou-section animate-fade">
-            <div className="ou-cards">
-              <div className="ou-card over-card">
-                <span className="ou-label">OVER {targetDigit}</span>
-                <span className="ou-pct">{overPct.toFixed(1)}%</span>
-                <div className="ou-bar-bg"><div className="ou-bar" style={{ width: `${overPct}%` }}></div></div>
-              </div>
-              <div className="ou-card under-card">
-                <span className="ou-label">UNDER {targetDigit}</span>
-                <span className="ou-pct">{underPct.toFixed(1)}%</span>
-                <div className="ou-bar-bg"><div className="ou-bar" style={{ width: `${underPct}%` }}></div></div>
-              </div>
+        <div className="ou-section animate-fade">
+          <div className="ou-cards">
+            <div className="ou-card over-card">
+              <span className="ou-label">{card1Label}</span>
+              <span className="ou-pct">{card1Pct.toFixed(1)}%</span>
+              <div className="ou-bar-bg"><div className="ou-bar" style={{ width: `${card1Pct}%` }}></div></div>
             </div>
-            
+            <div className="ou-card under-card">
+              <span className="ou-label">{card2Label}</span>
+              <span className="ou-pct">{card2Pct.toFixed(1)}%</span>
+              <div className="ou-bar-bg"><div className="ou-bar" style={{ width: `${card2Pct}%` }}></div></div>
+            </div>
+          </div>
+          
+          {showTargetDigitSelector && (
             <div className="target-digit-selector">
               <label>Select Target Digit:</label>
               <div className="td-row">
@@ -297,8 +332,8 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="section-title">
           <Activity size={16} color="#3b82f6" />
