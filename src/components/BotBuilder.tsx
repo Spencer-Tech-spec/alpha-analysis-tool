@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Layers, Box, Settings, Sliders, ChevronRight } from 'lucide-react';
+import { Layers, Box, Settings, Sliders, ChevronRight, Zap, ShieldCheck } from 'lucide-react';
 
 const BotBuilder = () => {
   const categories = [
