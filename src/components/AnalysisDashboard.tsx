@@ -41,6 +41,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const [strength, setStrength] = useState<number>(0);
   const [selectedMarket, setSelectedMarket] = useState<'b1' | 'b2' | null>(null);
   const [isTracking, setIsTracking] = useState(false);
+  const [targetDigit, setTargetDigit] = useState<number>(5);
 
   // Derive frequencies
   const frequencies = useMemo(() => {
@@ -61,6 +62,12 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const selectedMarketRef = useRef(selectedMarket);
   const confirmationCountRef = useRef(0);
   const isTrackingRef = useRef(isTracking);
+  const targetDigitRef = useRef(targetDigit);
+
+  const overSum = frequencies.reduce((acc, val, idx) => idx > targetDigit ? acc + val : acc, 0);
+  const underSum = frequencies.reduce((acc, val, idx) => idx < targetDigit ? acc + val : acc, 0);
+  const overPct = totalTicks > 0 ? (overSum / totalTicks) * 100 : 0;
+  const underPct = totalTicks > 0 ? (underSum / totalTicks) * 100 : 0;
 
   const controlLabels = useMemo(() => {
     switch (activeView) {
@@ -83,6 +90,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   useEffect(() => { controlLabelsRef.current = controlLabels; }, [controlLabels]);
   useEffect(() => { activeViewRef.current = activeView; }, [activeView]);
   useEffect(() => { isTrackingRef.current = isTracking; }, [isTracking]);
+  useEffect(() => { targetDigitRef.current = targetDigit; }, [targetDigit]);
 
   useEffect(() => {
     if (isAnalyzing) {
@@ -114,7 +122,8 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
             if (view === 'even-odd') {
                 targetIndices = isB1 ? [0,2,4,6,8] : [1,3,5,7,9];
             } else if (view === 'over-under') {
-                targetIndices = isB1 ? [5,6,7,8,9] : [0,1,2,3,4];
+                const td = targetDigitRef.current;
+                targetIndices = isB1 ? Array.from({length: 9 - td}, (_, i) => td + 1 + i) : Array.from({length: td}, (_, i) => i);
             } else if (view === 'rise-fall') {
                 targetIndices = isB1 ? [0,1,2,3,4] : [5,6,7,8,9];
             }
@@ -259,6 +268,38 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
       </div>
 
       <div className="trading-controls">
+        {activeView === 'over-under' && (
+          <div className="ou-section animate-fade">
+            <div className="ou-cards">
+              <div className="ou-card over-card">
+                <span className="ou-label">OVER {targetDigit}</span>
+                <span className="ou-pct">{overPct.toFixed(1)}%</span>
+                <div className="ou-bar-bg"><div className="ou-bar" style={{ width: `${overPct}%` }}></div></div>
+              </div>
+              <div className="ou-card under-card">
+                <span className="ou-label">UNDER {targetDigit}</span>
+                <span className="ou-pct">{underPct.toFixed(1)}%</span>
+                <div className="ou-bar-bg"><div className="ou-bar" style={{ width: `${underPct}%` }}></div></div>
+              </div>
+            </div>
+            
+            <div className="target-digit-selector">
+              <label>Select Target Digit:</label>
+              <div className="td-row">
+                {[0,1,2,3,4,5,6,7,8,9].map(d => (
+                  <button 
+                    key={d} 
+                    className={`td-btn ${targetDigit === d ? 'active' : ''}`}
+                    onClick={() => setTargetDigit(d)}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="section-title">
           <Activity size={16} color="#3b82f6" />
           <span>Market Logic Panel</span>
@@ -360,6 +401,23 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
         .pill:hover { background: #334155; }
         .pill.green.active { background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981; }
         .pill.red.active { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #ef4444; }
+        
+        .ou-section { display: flex; flex-direction: column; gap: 20px; margin-bottom: 24px; }
+        .ou-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .ou-card { border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; color: white; position: relative; overflow: hidden; }
+        .over-card { background: linear-gradient(135deg, #34d399 0%, #10b981 100%); box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3); }
+        .under-card { background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%); box-shadow: 0 10px 15px -3px rgba(96, 165, 250, 0.3); }
+        .ou-label { font-size: 0.875rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+        .ou-pct { font-size: 2rem; font-weight: 800; }
+        .ou-bar-bg { height: 6px; background: rgba(255, 255, 255, 0.2); border-radius: 999px; overflow: hidden; margin-top: 4px; }
+        .ou-bar { height: 100%; background: rgba(255, 255, 255, 0.9); border-radius: 999px; transition: width 0.3s ease; }
+        .target-digit-selector { display: flex; flex-direction: column; gap: 8px; }
+        .target-digit-selector label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+        .td-row { display: flex; gap: 6px; flex-wrap: wrap; }
+        .td-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #1e293b; background: transparent; color: #94a3b8; font-weight: 700; font-size: 0.875rem; transition: all 0.2s; cursor: pointer; }
+        .td-btn:hover { border-color: #3b82f6; color: white; }
+        .td-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3); }
+
         .btn-generate { background: #3b82f6; color: white; padding: 14px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 12px; font-weight: 900; cursor: pointer; transition: all 0.2s; }
         .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
         
