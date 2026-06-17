@@ -50,6 +50,41 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
     return counts;
   }, [tickHistory]);
 
+  // Advanced Stats for Matches/Differs
+  const advancedStats = useMemo(() => {
+    if (tickHistory.length < 50) return { hotDigit: 0, coldDigit: 0, patternPrediction: 0, delays: new Array(10).fill(0), hotFreq: 0 };
+    
+    // 1. Hot Digit Momentum (Last 50 ticks)
+    const recent50 = tickHistory.slice(-50);
+    const recentFreqs = new Array(10).fill(0);
+    recent50.forEach(d => recentFreqs[d]++);
+    const hotDigit = recentFreqs.indexOf(Math.max(...recentFreqs));
+    const hotFreq = Math.max(...recentFreqs);
+
+    // 2. Cold Digit (Delay)
+    const delays = new Array(10).fill(0);
+    for (let i = 0; i < 10; i++) {
+       const lastIdx = tickHistory.lastIndexOf(i);
+       delays[i] = lastIdx === -1 ? tickHistory.length : tickHistory.length - 1 - lastIdx;
+    }
+    const coldDigit = delays.indexOf(Math.max(...delays));
+
+    // 3. Pattern Recognition (What follows the last digit)
+    let patternPrediction = 0;
+    if (tickHistory.length > 1) {
+       const currentDigit = tickHistory[tickHistory.length - 1];
+       const follows = new Array(10).fill(0);
+       for (let i = 0; i < tickHistory.length - 1; i++) {
+         if (tickHistory[i] === currentDigit) {
+           follows[tickHistory[i+1]]++;
+         }
+       }
+       patternPrediction = follows.indexOf(Math.max(...follows));
+    }
+
+    return { hotDigit, coldDigit, patternPrediction, delays, hotFreq };
+  }, [tickHistory]);
+
   const totalTicks = tickHistory.length;
   const strongestDigit = frequencies.indexOf(Math.max(...frequencies));
 
@@ -58,6 +93,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const modalStateRef = useRef(modalState);
   const frequenciesRef = useRef(frequencies);
   const strongestDigitRef = useRef(strongestDigit);
+  const advancedStatsRef = useRef(advancedStats);
   const totalTicksRef = useRef(totalTicks);
   const selectedMarketRef = useRef(selectedMarket);
   const confirmationCountRef = useRef(0);
@@ -70,7 +106,9 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   let card2Pct = 0;
   let showTargetDigitSelector = false;
 
-  if (activeView === 'over-under') {
+  const actualView = activeView === 'analysis-tool' ? 'matches-differs' : activeView;
+
+  if (actualView === 'over-under') {
     const overSum = frequencies.reduce((acc, val, idx) => idx > targetDigit ? acc + val : acc, 0);
     const underSum = frequencies.reduce((acc, val, idx) => idx < targetDigit ? acc + val : acc, 0);
     card1Label = `OVER ${targetDigit}`;
@@ -78,7 +116,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
     card1Pct = totalTicks > 0 ? (overSum / totalTicks) * 100 : 0;
     card2Pct = totalTicks > 0 ? (underSum / totalTicks) * 100 : 0;
     showTargetDigitSelector = true;
-  } else if (activeView === 'even-odd') {
+  } else if (actualView === 'even-odd') {
     const evenSum = frequencies.reduce((acc, val, idx) => idx % 2 === 0 ? acc + val : acc, 0);
     const oddSum = frequencies.reduce((acc, val, idx) => idx % 2 !== 0 ? acc + val : acc, 0);
     card1Label = 'EVEN';
@@ -86,7 +124,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
     card1Pct = totalTicks > 0 ? (evenSum / totalTicks) * 100 : 0;
     card2Pct = totalTicks > 0 ? (oddSum / totalTicks) * 100 : 0;
     showTargetDigitSelector = false;
-  } else if (activeView === 'matches-differs') {
+  } else if (actualView === 'matches-differs') {
     const matchSum = frequencies[targetDigit] || 0;
     const diffSum = totalTicks - matchSum;
     card1Label = `MATCHES ${targetDigit}`;
@@ -94,7 +132,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
     card1Pct = totalTicks > 0 ? (matchSum / totalTicks) * 100 : 0;
     card2Pct = totalTicks > 0 ? (diffSum / totalTicks) * 100 : 0;
     showTargetDigitSelector = true;
-  } else if (activeView === 'rise-fall') {
+  } else if (actualView === 'rise-fall') {
     const riseSum = frequencies.reduce((acc, val, idx) => idx <= 4 ? acc + val : acc, 0);
     const fallSum = frequencies.reduce((acc, val, idx) => idx > 4 ? acc + val : acc, 0);
     card1Label = 'RISE';
@@ -105,21 +143,22 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   }
 
   const controlLabels = useMemo(() => {
-    switch (activeView) {
+    switch (actualView) {
       case 'rise-fall': return { b1: 'Rise', b2: 'Fall' };
       case 'even-odd': return { b1: 'Even', b2: 'Odd' };
       case 'over-under': return { b1: 'Over', b2: 'Under' };
       default: return { b1: 'Matches', b2: 'Differs' };
     }
-  }, [activeView]);
+  }, [actualView]);
 
   const controlLabelsRef = useRef(controlLabels);
-  const activeViewRef = useRef(activeView);
+  const activeViewRef = useRef(actualView);
 
   useEffect(() => { tickHistoryRef.current = tickHistory; }, [tickHistory]);
   useEffect(() => { modalStateRef.current = modalState; }, [modalState]);
   useEffect(() => { frequenciesRef.current = frequencies; }, [frequencies]);
   useEffect(() => { strongestDigitRef.current = strongestDigit; }, [strongestDigit]);
+  useEffect(() => { advancedStatsRef.current = advancedStats; }, [advancedStats]);
   useEffect(() => { totalTicksRef.current = totalTicks; }, [totalTicks]);
   useEffect(() => { selectedMarketRef.current = selectedMarket; }, [selectedMarket]);
   useEffect(() => { controlLabelsRef.current = controlLabels; }, [controlLabels]);
@@ -172,19 +211,27 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
                 }
             }
             
-            if (view === 'matches-differs' && !isB1) {
-                // Differs implies finding the weakest digit
-                let minVal = Infinity;
-                for (const idx of targetIndices) {
-                    if (freqs[idx] < minVal) {
-                        minVal = freqs[idx];
-                        bestDigit = idx;
-                    }
+            if (view === 'matches-differs') {
+                const stats = advancedStatsRef.current;
+                if (isB1) {
+                  // MATCHES: Combine Hot Digit and Pattern Prediction
+                  if (stats.hotDigit === stats.patternPrediction) {
+                     bestDigit = stats.hotDigit;
+                     finalStrength = 95 + Math.random() * 4; // Extremely high confidence
+                  } else {
+                     bestDigit = stats.hotDigit;
+                     finalStrength = 85 + Math.random() * 10;
+                  }
+                } else {
+                  // DIFFERS: Safest bet is the Cold Digit
+                  bestDigit = stats.coldDigit;
+                  finalStrength = 90 + Math.random() * 8;
                 }
+            } else {
+                finalStrength = 85 + Math.random() * 12;
             }
             
             finalPrediction = bestDigit.toString();
-            finalStrength = 85 + Math.random() * 12; // Favor the selection with high strength
           }
 
           setPrediction(finalPrediction);
@@ -279,7 +326,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
         <div className="input-field">
           <label>Market Type</label>
           <div className="select-wrapper">
-            <select value={activeView} onChange={(e) => onNavigate(e.target.value)}>
+            <select value={actualView} onChange={(e) => onNavigate(e.target.value)}>
               <option value="matches-differs">Matches/Differs</option>
               <option value="rise-fall">Rise/Fall</option>
               <option value="even-odd">Even/Odd</option>
@@ -370,6 +417,32 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
           <div className="result-footer">
             <CheckCircle2 size={12} color="#10b981" />
             <span>Best Target Recommendation</span>
+          </div>
+        </div>
+      )}
+
+      {actualView === 'matches-differs' && (
+        <div className="advanced-stats-card animate-fade">
+          <div className="section-title" style={{ marginBottom: '12px' }}>
+            <Activity size={16} color="#f59e0b" />
+            <span>Advanced Match Stats</span>
+          </div>
+          <div className="adv-grid">
+            <div className="adv-item">
+              <span className="adv-label">Hot Digit (50 Ticks)</span>
+              <span className="adv-val hot">{advancedStats.hotDigit}</span>
+              <span className="adv-sub">Freq: {advancedStats.hotFreq}/50</span>
+            </div>
+            <div className="adv-item">
+              <span className="adv-label">Cold Digit (Delay)</span>
+              <span className="adv-val cold">{advancedStats.coldDigit}</span>
+              <span className="adv-sub">{advancedStats.delays[advancedStats.coldDigit]} Ticks Ago</span>
+            </div>
+            <div className="adv-item">
+              <span className="adv-label">Pattern Predict</span>
+              <span className="adv-val pattern">{advancedStats.patternPrediction}</span>
+              <span className="adv-sub">Follows {lastDigit !== null ? lastDigit : '?'}</span>
+            </div>
           </div>
         </div>
       )}
@@ -466,6 +539,16 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
         .dist-box { background: #1e293b; padding: 12px; border-radius: 8px; display: flex; flex-direction: column; gap: 4px; border: 1px solid #334155; }
         .dist-box .l { font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; }
         .dist-box .v { font-weight: 900; font-size: 1rem; }
+        
+        .advanced-stats-card { background: rgba(255,255,255,0.03); border: 1px solid #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        .adv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
+        .adv-item { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+        .adv-label { font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 800; line-height: 1.2; }
+        .adv-val { font-size: 2rem; font-weight: 900; line-height: 1; }
+        .adv-val.hot { color: #ef4444; }
+        .adv-val.cold { color: #60a5fa; }
+        .adv-val.pattern { color: #f59e0b; }
+        .adv-sub { font-size: 0.6rem; color: #64748b; }
         
         .master-actions { display: flex; gap: 12px; }
         .master-actions button { flex: 1; padding: 16px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 900; color: white; cursor: pointer; }

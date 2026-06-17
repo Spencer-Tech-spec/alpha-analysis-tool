@@ -27,9 +27,11 @@ export async function POST(req: NextRequest) {
     if (user.status === 'suspended') {
       return NextResponse.json({ error: 'Account is suspended' }, { status: 403 });
     }
+    if (user.status === 'pending_payment') {
+      return NextResponse.json({ error: 'Account pending activation. Please use payment options below to get credentials via WhatsApp.' }, { status: 403 });
+    }
     
-    // Allow 'active' and 'pending_payment' to log in for now
-    if (user.status !== 'active' && user.status !== 'pending_payment') {
+    if (user.status !== 'active') {
       return NextResponse.json({ error: 'Account is not active' }, { status: 403 });
     }
 

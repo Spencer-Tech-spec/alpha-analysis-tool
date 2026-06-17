@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { TrendingUp, User, Lock, Eye, EyeOff, ShieldCheck, MessageSquare, Zap, Mail, Phone } from 'lucide-react';
-import PaymentModal from './PaymentModal';
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -18,7 +17,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const handleLogin = async () => {
     setLoginError('');
@@ -64,7 +62,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         // Automatically switch to login with the generated username
         setUsername(data.user.username);
         setIsLoginMode(true);
-        setLoginError('Account created successfully! You can now sign in.');
+        setLoginError('Account created! Please select a payment option below to get your login credentials via WhatsApp.');
       }
     } catch (e) {
       setLoginError('Network error. Please try again.');
@@ -216,9 +214,26 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           </div>
           <p>Get full access including login credentials with our Premium Package</p>
           <div className="payment-badge">One-time payment</div>
-          <button className="btn-premium" onClick={() => setShowPaymentModal(true)}>
-            Get Login Credentials <User size={14} />
-          </button>
+          <div className="payment-methods">
+            <button 
+              className="pay-btn mpesa" 
+              onClick={() => window.open('https://wa.me/254793612801?text=Hello,%20I%20would%20like%20to%20get%20AlphaDollars%20Premium%20using%20M-Pesa.', '_blank')}
+            >
+              <img src="https://upload.wikimedia.org/wikipedia/commons/1/15/M-PESA_LOGO-01.svg" alt="M-Pesa" />
+            </button>
+            <button 
+              className="pay-btn paypal" 
+              onClick={() => window.open('https://wa.me/254793612801?text=Hello,%20I%20would%20like%20to%20get%20AlphaDollars%20Premium%20using%20PayPal.', '_blank')}
+            >
+              <img src="https://cdn.simpleicons.org/paypal/00457C" alt="PayPal" />
+            </button>
+            <button 
+              className="pay-btn binance" 
+              onClick={() => window.open('https://wa.me/254793612801?text=Hello,%20I%20would%20like%20to%20get%20AlphaDollars%20Premium%20using%20Binance.', '_blank')}
+            >
+              <img src="https://cdn.simpleicons.org/binance/F3BA2F" alt="Binance" />
+            </button>
+          </div>
         </div>
 
         <div className="premium-access">
@@ -227,8 +242,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           <p>Unlock professional trading tools</p>
         </div>
       </div>
-
-      {showPaymentModal && <PaymentModal onClose={() => setShowPaymentModal(false)} />}
     </div>
 
       <style jsx>{`
@@ -493,17 +506,40 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           text-transform: uppercase;
         }
 
-        .btn-premium {
-          background: var(--accent-green);
-          color: var(--bg-primary);
-          padding: 12px;
-          border-radius: 8px;
-          font-weight: 800;
-          font-size: 0.875rem;
+        .payment-methods {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
+          gap: 12px;
+          margin-top: 8px;
+        }
+
+        .pay-btn {
+          width: 56px;
+          height: 40px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+          background: white;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          cursor: pointer;
+        }
+
+        .pay-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .pay-btn.mpesa { background: #fff; padding: 4px; }
+        .pay-btn.paypal { background: #fff; padding: 8px; }
+        .pay-btn.binance { background: #1E2329; padding: 8px; border-color: #F3BA2F; }
+
+        .pay-btn img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
         }
 
         .premium-access {

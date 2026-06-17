@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
         email,
         phone,
         password_hash: password,
-        status: 'active' // Changed from pending_payment so they can login immediately
+        status: 'pending_payment'
       })
       .select('id, username')
       .single();
