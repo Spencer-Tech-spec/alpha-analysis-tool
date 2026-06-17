@@ -27,11 +27,18 @@ export async function POST(req: NextRequest) {
     if (user.status === 'suspended') {
       return NextResponse.json({ error: 'Account is suspended' }, { status: 403 });
     }
+    // If the user managed to log in while pending_payment, it means the Admin gave them their secret username.
+    // We treat this successful login as proof of payment and auto-activate the account.
     if (user.status === 'pending_payment') {
-      return NextResponse.json({ error: 'Account pending activation. Please use payment options below to get credentials via WhatsApp.' }, { status: 403 });
-    }
-    
-    if (user.status !== 'active') {
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ status: 'active' })
+        .eq('id', user.id);
+        
+      if (updateError) {
+        console.error('[Login] Failed to mark user as active:', updateError);
+      }
+    } else if (user.status !== 'active') {
       return NextResponse.json({ error: 'Account is not active' }, { status: 403 });
     }
 

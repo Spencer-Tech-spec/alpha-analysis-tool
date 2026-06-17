@@ -59,10 +59,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       if (!res.ok) {
         setLoginError(data.error || 'Registration failed');
       } else {
-        // Automatically switch to login with the generated username
-        setUsername(data.user.username);
+        // Do not reveal the generated username. Clear the form fields.
+        setUsername('');
+        setPassword('');
         setIsLoginMode(true);
-        setLoginError('Account created! Please select a payment option below to get your login credentials via WhatsApp.');
+        setLoginError('Account created! Please select a payment option below to contact Admin for your login credentials.');
       }
     } catch (e) {
       setLoginError('Network error. Please try again.');
