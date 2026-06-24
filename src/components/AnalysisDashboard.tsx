@@ -171,6 +171,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
 
   useEffect(() => {
     if (isAnalyzing) {
+      setTickHistory([]); // Clear old history to prevent mixed stats
       derivClient.connect(selectedVol);
       
       const unsubscribeTick = derivClient.onTick((tick: TickData) => {

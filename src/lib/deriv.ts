@@ -22,13 +22,16 @@ export class DerivClient {
       return;
     }
     
-    this.currentSymbol = symbol;
     if (this.ws) {
       if (this.ws.readyState === WebSocket.OPEN && this.isAuthorized) {
         this.switchSymbol(symbol);
+      } else {
+        this.currentSymbol = symbol;
       }
       return;
     }
+
+    this.currentSymbol = symbol;
 
     this.ws = new WebSocket(WS_URL);
 
