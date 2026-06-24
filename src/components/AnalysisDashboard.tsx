@@ -42,6 +42,8 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const [selectedMarket, setSelectedMarket] = useState<'b1' | 'b2' | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [targetDigit, setTargetDigit] = useState<number>(5);
+  const [recoveryTargetDigit, setRecoveryTargetDigit] = useState<number>(6);
+  const [recoveryPrediction, setRecoveryPrediction] = useState<string | null>(null);
 
   // Derive frequencies
   const frequencies = useMemo(() => {
@@ -99,6 +101,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const confirmationCountRef = useRef(0);
   const isTrackingRef = useRef(isTracking);
   const targetDigitRef = useRef(targetDigit);
+  const recoveryTargetDigitRef = useRef(recoveryTargetDigit);
 
   let card1Label = '';
   let card2Label = '';
@@ -165,6 +168,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   useEffect(() => { activeViewRef.current = activeView; }, [activeView]);
   useEffect(() => { isTrackingRef.current = isTracking; }, [isTracking]);
   useEffect(() => { targetDigitRef.current = targetDigit; }, [targetDigit]);
+  useEffect(() => { recoveryTargetDigitRef.current = recoveryTargetDigit; }, [recoveryTargetDigit]);
 
   useEffect(() => {
     if (isAnalyzing) {
@@ -185,74 +189,75 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
         const updateSignal = () => {
           let finalPrediction = '0';
           let finalStrength = 0;
+          let finalRecoveryPrediction = '0';
 
           if (selectedMarketRef.current) {
             const isB1 = selectedMarketRef.current === 'b1';
             const view = activeViewRef.current;
             const history = tickHistoryRef.current;
-            const td = targetDigitRef.current;
             
-            // Define losing digits based on the selected market
-            let losingDigits: number[] = [];
-            if (view === 'even-odd') {
-                losingDigits = isB1 ? [1,3,5,7,9] : [0,2,4,6,8];
-            } else if (view === 'over-under') {
-                // Over TD means winning is > TD. Losing is <= TD.
-                // Under TD means winning is < TD. Losing is >= TD.
-                losingDigits = isB1 
-                    ? Array.from({length: td + 1}, (_, i) => i) 
-                    : Array.from({length: 10 - td}, (_, i) => td + i);
-            } else if (view === 'rise-fall') {
-                losingDigits = isB1 ? [5,6,7,8,9] : [0,1,2,3,4];
-            } else if (view === 'matches-differs') {
-                losingDigits = isB1 
-                    ? [0,1,2,3,4,5,6,7,8,9].filter(d => d !== td) 
-                    : [td];
-            }
-            
-            let bestTriggerDigit = 0;
-            let maxScore = -1;
+            const findBestTrigger = (td: number) => {
+                let losingDigits: number[] = [];
+                if (view === 'even-odd') {
+                    losingDigits = isB1 ? [1,3,5,7,9] : [0,2,4,6,8];
+                } else if (view === 'over-under') {
+                    losingDigits = isB1 
+                        ? Array.from({length: td + 1}, (_, i) => i) 
+                        : Array.from({length: 10 - td}, (_, i) => td + i);
+                } else if (view === 'rise-fall') {
+                    losingDigits = isB1 ? [5,6,7,8,9] : [0,1,2,3,4];
+                } else if (view === 'matches-differs') {
+                    losingDigits = isB1 
+                        ? [0,1,2,3,4,5,6,7,8,9].filter(d => d !== td) 
+                        : [td];
+                }
+                
+                let bestTriggerDigit = 0;
+                let maxScore = -1;
+                let bestAvgStreak = 0;
 
-            // Test every possible digit (0-9) as an entry trigger
-            for (let d = 0; d <= 9; d++) {
-                let totalSafeTicks = 0;
-                let occurrences = 0;
+                for (let d = 0; d <= 9; d++) {
+                    let totalSafeTicks = 0;
+                    let occurrences = 0;
 
-                for (let i = 0; i < history.length - 1; i++) {
-                    if (history[i] === d) {
-                        occurrences++;
-                        let safeTicks = 0;
-                        // Count how many ticks until a losing digit appears
-                        for (let j = i + 1; j < history.length; j++) {
-                            if (losingDigits.includes(history[j])) {
-                                break;
+                    for (let i = 0; i < history.length - 1; i++) {
+                        if (history[i] === d) {
+                            occurrences++;
+                            let safeTicks = 0;
+                            for (let j = i + 1; j < history.length; j++) {
+                                if (losingDigits.includes(history[j])) {
+                                    break;
+                                }
+                                safeTicks++;
                             }
-                            safeTicks++;
+                            totalSafeTicks += safeTicks;
                         }
-                        totalSafeTicks += safeTicks;
+                    }
+
+                    const avgSafeTicks = occurrences > 0 ? totalSafeTicks / occurrences : 0;
+                    const penalty = occurrences < 15 ? (occurrences / 15) : 1;
+                    const score = avgSafeTicks * penalty;
+                    
+                    if (score > maxScore) {
+                        maxScore = score;
+                        bestTriggerDigit = d;
+                        bestAvgStreak = avgSafeTicks;
                     }
                 }
-
-                const avgSafeTicks = occurrences > 0 ? totalSafeTicks / occurrences : 0;
-                // Penalize digits that haven't occurred enough to be statistically reliable
-                const penalty = occurrences < 15 ? (occurrences / 15) : 1;
-                const score = avgSafeTicks * penalty;
-                
-                if (score > maxScore) {
-                    maxScore = score;
-                    bestTriggerDigit = d;
-                    
-                    // Dynamic strength calculation based on the average safe ticks
-                    // A streak of 1 safe tick gives ~80%, 3 gives ~90%, capped at 99.9%
-                    finalStrength = Math.min(99.9, 75 + (avgSafeTicks * 5) + (Math.random() * 3));
-                }
-            }
+                return { bestTriggerDigit, bestAvgStreak };
+            };
             
-            finalPrediction = bestTriggerDigit.toString();
+            const primary = findBestTrigger(targetDigitRef.current);
+            finalPrediction = primary.bestTriggerDigit.toString();
+            finalStrength = Math.min(99.9, 75 + (primary.bestAvgStreak * 5) + (Math.random() * 3));
+            
+            const recovery = findBestTrigger(recoveryTargetDigitRef.current);
+            finalRecoveryPrediction = recovery.bestTriggerDigit.toString();
           }
 
           setPrediction(finalPrediction);
           setStrength(finalStrength);
+          setRecoveryPrediction(finalRecoveryPrediction);
         };
 
         if (modalStateRef.current === 'processing') {
@@ -297,6 +302,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const handleGenerateSignal = () => {
     confirmationCountRef.current = 0;
     setPrediction(null);
+    setRecoveryPrediction(null);
     setIsTracking(false);
     setModalState('processing');
   };
@@ -382,18 +388,35 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
           </div>
           
           {showTargetDigitSelector && (
-            <div className="target-digit-selector">
-              <label>Select Target Digit:</label>
-              <div className="td-row">
-                {[0,1,2,3,4,5,6,7,8,9].map(d => (
-                  <button 
-                    key={d} 
-                    className={`td-btn ${targetDigit === d ? 'active' : ''}`}
-                    onClick={() => setTargetDigit(d)}
-                  >
-                    {d}
-                  </button>
-                ))}
+            <div className="target-digit-selector-group">
+              <div className="target-digit-selector">
+                <label>Select Target Digit:</label>
+                <div className="td-row">
+                  {[0,1,2,3,4,5,6,7,8,9].map(d => (
+                    <button 
+                      key={d} 
+                      className={`td-btn ${targetDigit === d ? 'active' : ''}`}
+                      onClick={() => setTargetDigit(d)}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="target-digit-selector recovery-selector">
+                <label>Recovery Target Digit (After Loss):</label>
+                <div className="td-row">
+                  {[0,1,2,3,4,5,6,7,8,9].map(d => (
+                    <button 
+                      key={d} 
+                      className={`td-btn ${recoveryTargetDigit === d ? 'active' : ''}`}
+                      onClick={() => setRecoveryTargetDigit(d)}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -424,17 +447,34 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
       </div>
 
       {prediction && (
-        <div className="result-card animate-slide-in favor">
-          <div className="confidence-meter">
-            <Target size={14} color="#f59e0b" />
-            <span>Market Strength: {strength.toFixed(1)}%</span>
+        <div className="results-container">
+          <div className="result-card animate-slide-in favor">
+            <div className="confidence-meter">
+              <Target size={14} color="#f59e0b" />
+              <span>Market Strength: {strength.toFixed(1)}%</span>
+            </div>
+            <span className="result-label">Optimal Entry Trigger (Wait For):</span>
+            <div className="result-value">{prediction}</div>
+            <div className="result-footer">
+              <CheckCircle2 size={12} color="#10b981" />
+              <span>Enter trade immediately after this digit</span>
+            </div>
           </div>
-          <span className="result-label">Optimal Entry Trigger (Wait For):</span>
-          <div className="result-value">{prediction}</div>
-          <div className="result-footer">
-            <CheckCircle2 size={12} color="#10b981" />
-            <span>Enter trade immediately after this digit</span>
-          </div>
+
+          {recoveryPrediction && showTargetDigitSelector && (
+            <div className="result-card recovery animate-slide-in favor">
+              <div className="confidence-meter">
+                <AlertTriangle size={14} color="#ef4444" />
+                <span>Recovery Mode Ready</span>
+              </div>
+              <span className="result-label">Recovery Trigger (If Lost):</span>
+              <div className="result-value recovery-val">{recoveryPrediction}</div>
+              <div className="result-footer">
+                <TrendingDown size={12} color="#ef4444" />
+                <span>Wait for this digit to recover</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -536,21 +576,30 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
         .ou-pct { font-size: 2rem; font-weight: 800; }
         .ou-bar-bg { height: 6px; background: rgba(255, 255, 255, 0.2); border-radius: 999px; overflow: hidden; margin-top: 4px; }
         .ou-bar { height: 100%; background: rgba(255, 255, 255, 0.9); border-radius: 999px; transition: width 0.3s ease; }
+        .target-digit-selector-group { display: flex; flex-direction: column; gap: 16px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 12px; }
         .target-digit-selector { display: flex; flex-direction: column; gap: 8px; }
         .target-digit-selector label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+        .recovery-selector label { color: #fca5a5; }
         .td-row { display: flex; gap: 6px; flex-wrap: wrap; }
         .td-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #1e293b; background: transparent; color: #94a3b8; font-weight: 700; font-size: 0.875rem; transition: all 0.2s; cursor: pointer; }
         .td-btn:hover { border-color: #3b82f6; color: white; }
         .td-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3); }
+        .recovery-selector .td-btn:hover { border-color: #ef4444; color: white; }
+        .recovery-selector .td-btn.active { background: #ef4444; color: white; border-color: #ef4444; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.3); }
 
         .btn-generate { background: #3b82f6; color: white; padding: 14px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 12px; font-weight: 900; cursor: pointer; transition: all 0.2s; }
         .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
         
-        .result-card { background: #0f172a; border: 2px solid #f59e0b; padding: 24px; border-radius: 16px; text-align: center; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
+        .results-container { display: flex; gap: 12px; margin-bottom: 16px; }
+        .result-card { flex: 1; background: #0f172a; border: 2px solid #f59e0b; padding: 24px; border-radius: 16px; text-align: center; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
+        .result-card.recovery { border-color: #ef4444; background: linear-gradient(135deg, #0f172a 0%, #3f1515 100%); }
         .confidence-meter { display: flex; align-items: center; justify-content: center; gap: 6px; color: #f59e0b; font-size: 0.7rem; font-weight: 800; margin-bottom: 12px; }
+        .result-card.recovery .confidence-meter { color: #ef4444; }
         .result-label { font-size: 0.8rem; color: #94a3b8; font-weight: 700; display: block; margin-bottom: 12px; }
         .result-value { font-size: 4rem; font-weight: 900; color: white; line-height: 1; margin-bottom: 12px; }
+        .result-value.recovery-val { color: #fca5a5; }
         .result-footer { display: flex; align-items: center; justify-content: center; gap: 6px; color: #10b981; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; }
+        .result-card.recovery .result-footer { color: #ef4444; }
         
         .dist-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .dist-box { background: #1e293b; padding: 12px; border-radius: 8px; display: flex; flex-direction: column; gap: 4px; border: 1px solid #334155; }
