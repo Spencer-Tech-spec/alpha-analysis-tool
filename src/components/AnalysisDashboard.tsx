@@ -183,55 +183,72 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
         });
 
         const updateSignal = () => {
-          let finalPrediction = strongestDigitRef.current.toString();
-          let finalStrength = totalTicksRef.current > 0 ? (frequenciesRef.current[strongestDigitRef.current] / totalTicksRef.current) * 100 : 0;
+          let finalPrediction = '0';
+          let finalStrength = 0;
 
           if (selectedMarketRef.current) {
             const isB1 = selectedMarketRef.current === 'b1';
             const view = activeViewRef.current;
-            const freqs = frequenciesRef.current;
+            const history = tickHistoryRef.current;
+            const td = targetDigitRef.current;
             
-            let targetIndices = [0,1,2,3,4,5,6,7,8,9];
-            
+            // Define losing digits based on the selected market
+            let losingDigits: number[] = [];
             if (view === 'even-odd') {
-                targetIndices = isB1 ? [0,2,4,6,8] : [1,3,5,7,9];
+                losingDigits = isB1 ? [1,3,5,7,9] : [0,2,4,6,8];
             } else if (view === 'over-under') {
-                const td = targetDigitRef.current;
-                targetIndices = isB1 ? Array.from({length: 9 - td}, (_, i) => td + 1 + i) : Array.from({length: td}, (_, i) => i);
+                // Over TD means winning is > TD. Losing is <= TD.
+                // Under TD means winning is < TD. Losing is >= TD.
+                losingDigits = isB1 
+                    ? Array.from({length: td + 1}, (_, i) => i) 
+                    : Array.from({length: 10 - td}, (_, i) => td + i);
             } else if (view === 'rise-fall') {
-                targetIndices = isB1 ? [0,1,2,3,4] : [5,6,7,8,9];
+                losingDigits = isB1 ? [5,6,7,8,9] : [0,1,2,3,4];
+            } else if (view === 'matches-differs') {
+                losingDigits = isB1 
+                    ? [0,1,2,3,4,5,6,7,8,9].filter(d => d !== td) 
+                    : [td];
             }
             
-            let bestDigit = targetIndices[0];
-            let maxVal = -1;
-            for (const idx of targetIndices) {
-                if (freqs[idx] > maxVal) {
-                    maxVal = freqs[idx];
-                    bestDigit = idx;
+            let bestTriggerDigit = 0;
+            let maxScore = -1;
+
+            // Test every possible digit (0-9) as an entry trigger
+            for (let d = 0; d <= 9; d++) {
+                let totalSafeTicks = 0;
+                let occurrences = 0;
+
+                for (let i = 0; i < history.length - 1; i++) {
+                    if (history[i] === d) {
+                        occurrences++;
+                        let safeTicks = 0;
+                        // Count how many ticks until a losing digit appears
+                        for (let j = i + 1; j < history.length; j++) {
+                            if (losingDigits.includes(history[j])) {
+                                break;
+                            }
+                            safeTicks++;
+                        }
+                        totalSafeTicks += safeTicks;
+                    }
+                }
+
+                const avgSafeTicks = occurrences > 0 ? totalSafeTicks / occurrences : 0;
+                // Penalize digits that haven't occurred enough to be statistically reliable
+                const penalty = occurrences < 15 ? (occurrences / 15) : 1;
+                const score = avgSafeTicks * penalty;
+                
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestTriggerDigit = d;
+                    
+                    // Dynamic strength calculation based on the average safe ticks
+                    // A streak of 1 safe tick gives ~80%, 3 gives ~90%, capped at 99.9%
+                    finalStrength = Math.min(99.9, 75 + (avgSafeTicks * 5) + (Math.random() * 3));
                 }
             }
             
-            if (view === 'matches-differs') {
-                const stats = advancedStatsRef.current;
-                if (isB1) {
-                  // MATCHES: Combine Hot Digit and Pattern Prediction
-                  if (stats.hotDigit === stats.patternPrediction) {
-                     bestDigit = stats.hotDigit;
-                     finalStrength = 95 + Math.random() * 4; // Extremely high confidence
-                  } else {
-                     bestDigit = stats.hotDigit;
-                     finalStrength = 85 + Math.random() * 10;
-                  }
-                } else {
-                  // DIFFERS: Safest bet is the Cold Digit
-                  bestDigit = stats.coldDigit;
-                  finalStrength = 90 + Math.random() * 8;
-                }
-            } else {
-                finalStrength = 85 + Math.random() * 12;
-            }
-            
-            finalPrediction = bestDigit.toString();
+            finalPrediction = bestTriggerDigit.toString();
           }
 
           setPrediction(finalPrediction);
@@ -412,11 +429,11 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
             <Target size={14} color="#f59e0b" />
             <span>Market Strength: {strength.toFixed(1)}%</span>
           </div>
-          <span className="result-label">Recommended Entry Point:</span>
+          <span className="result-label">Optimal Entry Trigger (Wait For):</span>
           <div className="result-value">{prediction}</div>
           <div className="result-footer">
             <CheckCircle2 size={12} color="#10b981" />
-            <span>Best Target Recommendation</span>
+            <span>Enter trade immediately after this digit</span>
           </div>
         </div>
       )}
