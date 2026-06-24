@@ -43,7 +43,6 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const [isTracking, setIsTracking] = useState(false);
   const [targetDigit, setTargetDigit] = useState<number>(5);
   const [recoveryTargetDigit, setRecoveryTargetDigit] = useState<number>(6);
-  const [recoveryPrediction, setRecoveryPrediction] = useState<string | null>(null);
 
   // Derive frequencies
   const frequencies = useMemo(() => {
@@ -189,27 +188,36 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
         const updateSignal = () => {
           let finalPrediction = '0';
           let finalStrength = 0;
-          let finalRecoveryPrediction = '0';
 
           if (selectedMarketRef.current) {
             const isB1 = selectedMarketRef.current === 'b1';
             const view = activeViewRef.current;
             const history = tickHistoryRef.current;
             
-            const findBestTrigger = (td: number) => {
-                let losingDigits: number[] = [];
+            const findMasterTrigger = (primaryTd: number, recoveryTd: number) => {
+                let primaryLosing: number[] = [];
+                let recoveryLosing: number[] = [];
+                
                 if (view === 'even-odd') {
-                    losingDigits = isB1 ? [1,3,5,7,9] : [0,2,4,6,8];
+                    primaryLosing = isB1 ? [1,3,5,7,9] : [0,2,4,6,8];
+                    recoveryLosing = primaryLosing;
                 } else if (view === 'over-under') {
-                    losingDigits = isB1 
-                        ? Array.from({length: td + 1}, (_, i) => i) 
-                        : Array.from({length: 10 - td}, (_, i) => td + i);
+                    primaryLosing = isB1 
+                        ? Array.from({length: primaryTd + 1}, (_, i) => i) 
+                        : Array.from({length: 10 - primaryTd}, (_, i) => primaryTd + i);
+                    recoveryLosing = isB1
+                        ? Array.from({length: recoveryTd + 1}, (_, i) => i) 
+                        : Array.from({length: 10 - recoveryTd}, (_, i) => recoveryTd + i);
                 } else if (view === 'rise-fall') {
-                    losingDigits = isB1 ? [5,6,7,8,9] : [0,1,2,3,4];
+                    primaryLosing = isB1 ? [5,6,7,8,9] : [0,1,2,3,4];
+                    recoveryLosing = primaryLosing;
                 } else if (view === 'matches-differs') {
-                    losingDigits = isB1 
-                        ? [0,1,2,3,4,5,6,7,8,9].filter(d => d !== td) 
-                        : [td];
+                    primaryLosing = isB1 
+                        ? [0,1,2,3,4,5,6,7,8,9].filter(d => d !== primaryTd) 
+                        : [primaryTd];
+                    recoveryLosing = isB1 
+                        ? [0,1,2,3,4,5,6,7,8,9].filter(d => d !== recoveryTd) 
+                        : [recoveryTd];
                 }
                 
                 let bestTriggerDigit = 0;
@@ -217,47 +225,71 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
                 let bestAvgStreak = 0;
 
                 for (let d = 0; d <= 9; d++) {
-                    let totalSafeTicks = 0;
+                    let totalPrimarySafe = 0;
                     let occurrences = 0;
+                    
+                    let recoveryOpportunities = 0;
+                    let recoverySuccesses = 0;
+                    let totalRecoverySafe = 0;
 
                     for (let i = 0; i < history.length - 1; i++) {
                         if (history[i] === d) {
                             occurrences++;
                             let safeTicks = 0;
+                            let lossIndex = -1;
+                            
                             for (let j = i + 1; j < history.length; j++) {
-                                if (losingDigits.includes(history[j])) {
+                                if (primaryLosing.includes(history[j])) {
+                                    lossIndex = j;
                                     break;
                                 }
                                 safeTicks++;
                             }
-                            totalSafeTicks += safeTicks;
+                            totalPrimarySafe += safeTicks;
+                            
+                            // Evaluate Recovery Condition when a loss happens
+                            if (lossIndex !== -1 && lossIndex + 1 < history.length) {
+                                recoveryOpportunities++;
+                                const nextDigit = history[lossIndex + 1];
+                                if (!recoveryLosing.includes(nextDigit)) {
+                                    recoverySuccesses++;
+                                    let recSafe = 1;
+                                    for (let k = lossIndex + 2; k < history.length; k++) {
+                                        if (recoveryLosing.includes(history[k])) break;
+                                        recSafe++;
+                                    }
+                                    totalRecoverySafe += recSafe;
+                                }
+                            }
                         }
                     }
 
-                    const avgSafeTicks = occurrences > 0 ? totalSafeTicks / occurrences : 0;
+                    const avgPrimarySafe = occurrences > 0 ? totalPrimarySafe / occurrences : 0;
+                    const recoveryWinRate = recoveryOpportunities > 0 ? recoverySuccesses / recoveryOpportunities : 0;
+                    const avgRecoverySafe = recoveryOpportunities > 0 ? totalRecoverySafe / recoveryOpportunities : 0;
+                    
                     const penalty = occurrences < 15 ? (occurrences / 15) : 1;
-                    const score = avgSafeTicks * penalty;
+                    
+                    // Master Score: Combines primary safety and immediate recovery success
+                    const recoveryFactor = (recoveryWinRate * 2.0) + (avgRecoverySafe * 0.5);
+                    const score = avgPrimarySafe * (1 + recoveryFactor) * penalty;
                     
                     if (score > maxScore) {
                         maxScore = score;
                         bestTriggerDigit = d;
-                        bestAvgStreak = avgSafeTicks;
+                        bestAvgStreak = avgPrimarySafe;
                     }
                 }
                 return { bestTriggerDigit, bestAvgStreak };
             };
             
-            const primary = findBestTrigger(targetDigitRef.current);
-            finalPrediction = primary.bestTriggerDigit.toString();
-            finalStrength = Math.min(99.9, 75 + (primary.bestAvgStreak * 5) + (Math.random() * 3));
-            
-            const recovery = findBestTrigger(recoveryTargetDigitRef.current);
-            finalRecoveryPrediction = recovery.bestTriggerDigit.toString();
+            const master = findMasterTrigger(targetDigitRef.current, recoveryTargetDigitRef.current);
+            finalPrediction = master.bestTriggerDigit.toString();
+            finalStrength = Math.min(99.9, 75 + (master.bestAvgStreak * 5) + (Math.random() * 3));
           }
 
           setPrediction(finalPrediction);
           setStrength(finalStrength);
-          setRecoveryPrediction(finalRecoveryPrediction);
         };
 
         if (modalStateRef.current === 'processing') {
@@ -302,7 +334,6 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
   const handleGenerateSignal = () => {
     confirmationCountRef.current = 0;
     setPrediction(null);
-    setRecoveryPrediction(null);
     setIsTracking(false);
     setModalState('processing');
   };
@@ -447,34 +478,17 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ activeView, onNav
       </div>
 
       {prediction && (
-        <div className="results-container">
-          <div className="result-card animate-slide-in favor">
-            <div className="confidence-meter">
-              <Target size={14} color="#f59e0b" />
-              <span>Market Strength: {strength.toFixed(1)}%</span>
-            </div>
-            <span className="result-label">Optimal Entry Trigger (Wait For):</span>
-            <div className="result-value">{prediction}</div>
-            <div className="result-footer">
-              <CheckCircle2 size={12} color="#10b981" />
-              <span>Enter trade immediately after this digit</span>
-            </div>
+        <div className="result-card animate-slide-in favor">
+          <div className="confidence-meter">
+            <Target size={14} color="#f59e0b" />
+            <span>Market Strength: {strength.toFixed(1)}%</span>
           </div>
-
-          {recoveryPrediction && showTargetDigitSelector && (
-            <div className="result-card recovery animate-slide-in favor">
-              <div className="confidence-meter">
-                <AlertTriangle size={14} color="#ef4444" />
-                <span>Recovery Mode Ready</span>
-              </div>
-              <span className="result-label">Recovery Trigger (If Lost):</span>
-              <div className="result-value recovery-val">{recoveryPrediction}</div>
-              <div className="result-footer">
-                <TrendingDown size={12} color="#ef4444" />
-                <span>Wait for this digit to recover</span>
-              </div>
-            </div>
-          )}
+          <span className="result-label">Master Entry Trigger (Wait For):</span>
+          <div className="result-value">{prediction}</div>
+          <div className="result-footer">
+            <CheckCircle2 size={12} color="#10b981" />
+            <span>Optimal for Primary & Recovery sequence</span>
+          </div>
         </div>
       )}
 
